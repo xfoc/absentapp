@@ -77,7 +77,7 @@
         </div>
         <div class="flex items-center gap-2">
           <span class="text-sm font-bold tracking-tight text-neutral-900">線上請假系統</span>
-          <span class="text-[10px] font-mono text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded">v2.8</span>
+          <span class="text-[10px] font-mono text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded">v2.9</span>
         </div>
       </div>
 
@@ -116,22 +116,27 @@
     </div>
   </header>
 
-  <!-- Google Sheets 串接彈窗 -->
+  <!-- Google Sheets 串接設定彈窗 -->
   <div id="sheetsModal" class="hidden fixed inset-0 z-50 bg-neutral-900/40 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white border border-neutral-200 max-w-lg w-full rounded-2xl p-6 shadow-subtle space-y-4 fade-enter max-h-[90vh] overflow-y-auto no-scrollbar">
       <div class="flex items-center justify-between border-b border-neutral-100 pb-3">
         <div class="flex items-center gap-2">
           <span class="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">📊</span>
-          <h3 class="text-sm font-bold text-neutral-900">Google Sheets 即時同步設定</h3>
+          <h3 class="text-sm font-bold text-neutral-900">Google Sheets 試算表連線設定</h3>
         </div>
         <button onclick="closeSheetsModal()" class="text-neutral-400 hover:text-neutral-700 text-sm">✕</button>
       </div>
 
       <div class="space-y-3 text-xs text-neutral-600 leading-relaxed">
-        <p>設定後，<strong>任何學生在不同手機/電腦填寫請假單</strong>，都會即時自動寫入您指定的 Google 試算表！</p>
-        
+        <div id="hardcodeNotice" class="hidden bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-emerald-800 space-y-1">
+          <p class="font-bold flex items-center gap-1.5">
+            <span>✓</span> 系統已內建寫死試算表網址
+          </p>
+          <p class="text-[11px] text-emerald-700">所有學生無論使用任何手機或電腦開啟，皆會自動發送至該 Google 試算表，無需額外設定。</p>
+        </div>
+
         <div class="space-y-1.5 bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-          <label class="block font-semibold text-neutral-800">Google Apps Script 網頁應用程式網址：</label>
+          <label class="block font-semibold text-neutral-800">目前生效的 Apps Script 網址：</label>
           <input 
             type="url" 
             id="input-sheetsUrl" 
@@ -141,7 +146,7 @@
           <div class="flex justify-between items-center pt-1">
             <span id="sheetsSaveStatus" class="text-[11px] text-neutral-400 font-mono">尚未設定</span>
             <button onclick="saveSheetsUrl()" class="px-3 py-1 bg-neutral-900 text-white rounded-lg font-semibold hover:bg-neutral-800 transition active:scale-95">
-              儲存並啟用同步
+              儲存手動覆蓋
             </button>
           </div>
         </div>
@@ -149,7 +154,7 @@
         <div class="border border-neutral-200 rounded-xl p-3.5 space-y-2.5 bg-white">
           <div class="flex items-center justify-between pb-1">
             <h4 class="font-bold text-neutral-900 text-xs flex items-center gap-1.5">
-              <span>⚡</span> Google Apps Script 程式碼
+              <span>⚡</span> Google Apps Script 腳本程式碼
             </h4>
             <button onclick="copyGasScriptCode()" class="text-[11px] font-medium text-emerald-600 hover:text-emerald-700 underline">
               一鍵複製代碼
@@ -831,9 +836,13 @@ function doGet(e) {
     import { getFirestore, doc, setDoc, getDoc, addDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     /* ==========================================================================
-       【Vercel 部署設定】填入 Google Apps Script 網頁應用程式網址：
+       👉【最重要的設定區】在此處填入你的 Google Apps Script 網頁應用程式網址
+       只要把引號內填上你的網址，部署到 Vercel 後任何裝置打開就能立刻用！
        ========================================================================== */
-    const DEFAULT_GOOGLE_SHEETS_URL = ""; 
+    const HARDCODED_GOOGLE_SHEETS_URL = "https://script.google.com/macros/s/AKfycbx1aitZEJLZBE7AJhLGv-xjFZgfRKGD78DWiO4XNukanke19F58QugozHn-H47XNQ5p/exec"; 
+    // 例如填寫：
+    // const HARDCODED_GOOGLE_SHEETS_URL = "https://script.google.com/macros/s/AKfycbyxxxx-xxxx-xxxx/exec";
+    /* ========================================================================== */
 
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'leave-system-app';
     let app = null;
@@ -867,19 +876,18 @@ function doGet(e) {
     let currentStep = 1;
     const totalSteps = 7;
     let isRollCallMode = false;
-    let isSubmitting = false; // 防重複送出鎖
+    let isSubmitting = false;
 
-    // 後台管理密碼（支援自訂更新）
+    // 後台管理密碼
     let adminPassword = localStorage.getItem('app_admin_password') || 'admin123';
     let isAdminAuthenticated = false;
 
-    // Google Sheets 網址
-    let googleSheetsUrl = (DEFAULT_GOOGLE_SHEETS_URL || localStorage.getItem('app_sheets_url') || '').trim();
+    // 取得生效的 Google Sheets 網址（以寫死網址優先，其次讀取手動覆蓋設定）
+    let googleSheetsUrl = (HARDCODED_GOOGLE_SHEETS_URL || localStorage.getItem('app_sheets_url') || '').trim();
 
     let soundEnabled = true;
     let audioCtx = null;
 
-    // 取得當前本地格式化日期 (YYYY-MM-DD)，消除時區問題
     function getLocalDateString(d = new Date()) {
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -887,7 +895,6 @@ function doGet(e) {
       return `${year}-${month}-${day}`;
     }
 
-    // 日期字串全格式標準化（修復 2026/9/1 與 2026-09-01 不吻合的 Bug）
     function normalizeDateStr(str) {
       if (!str) return '';
       const parts = String(str).trim().split(/[\/\-.]/);
@@ -900,7 +907,6 @@ function doGet(e) {
       return String(str).trim();
     }
 
-    // 容錯解析時間戳記（修復 iOS Safari 對非標準日期字串回傳 NaN 破壞排序）
     function parseTimestamp(record) {
       if (record.timestamp && !isNaN(Number(record.timestamp))) {
         return Number(record.timestamp);
@@ -988,7 +994,7 @@ function doGet(e) {
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data) {
-            if (data.googleSheetsUrl) {
+            if (!HARDCODED_GOOGLE_SHEETS_URL && data.googleSheetsUrl) {
               googleSheetsUrl = data.googleSheetsUrl.trim();
               updateSheetsUI();
             }
@@ -1028,11 +1034,26 @@ function doGet(e) {
       const input = document.getElementById('input-sheetsUrl');
       const status = document.getElementById('sheetsSaveStatus');
       const indicator = document.getElementById('sheetsIndicator');
-      if (input && googleSheetsUrl) input.value = googleSheetsUrl;
-      if (status) {
-        status.innerText = googleSheetsUrl ? '已連線啟用中' : '尚未設定';
-        status.className = googleSheetsUrl ? 'text-[11px] text-emerald-600 font-mono font-bold' : 'text-[11px] text-neutral-400 font-mono';
+      const notice = document.getElementById('hardcodeNotice');
+
+      if (input) input.value = googleSheetsUrl;
+
+      if (HARDCODED_GOOGLE_SHEETS_URL) {
+        if (notice) notice.classList.remove('hidden');
+      } else {
+        if (notice) notice.classList.add('hidden');
       }
+
+      if (status) {
+        if (HARDCODED_GOOGLE_SHEETS_URL) {
+          status.innerText = '已寫死網址（全域生效）';
+          status.className = 'text-[11px] text-emerald-600 font-mono font-bold';
+        } else {
+          status.innerText = googleSheetsUrl ? '已連線啟用中' : '尚未設定';
+          status.className = googleSheetsUrl ? 'text-[11px] text-emerald-600 font-mono font-bold' : 'text-[11px] text-neutral-400 font-mono';
+        }
+      }
+
       if (indicator) {
         indicator.className = googleSheetsUrl ? 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse' : 'w-2 h-2 rounded-full bg-neutral-300';
       }
@@ -1074,9 +1095,7 @@ function doGet(e) {
       }
     });
 
-    // 動態繪製前台「班級卡片」與「假別按鈕」（修復動態 Grid 樣式失效）
     function renderFormOptions() {
-      // 1. 前台步驟 4 班級卡片
       const classGrid = document.getElementById('classOptionsGrid');
       const currentClassVal = document.getElementById('input-className').value;
       if (classGrid) {
@@ -1096,7 +1115,6 @@ function doGet(e) {
         }).join('');
       }
 
-      // 2. 前台步驟 5 假別按鈕（使用原生 CSS Grid 內聯樣式，杜絕 Tailwind 找不到 class 的 Bug）
       const typeGrid = document.getElementById('leaveTypeButtonGrid');
       let currentTypeVal = document.getElementById('input-leaveType').value;
       if (!leaveTypeOptions.includes(currentTypeVal)) {
@@ -1121,7 +1139,6 @@ function doGet(e) {
         }).join('');
       }
 
-      // 3. 自訂編輯彈窗內的標籤清單
       renderOptionsModalTags();
     }
 
@@ -1295,7 +1312,6 @@ function doGet(e) {
     let recognition = null;
     let isRecording = false;
 
-    // 健壯的語音輸入（修復異常中斷狀態卡死的 Bug）
     function toggleVoiceSpeech() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -1500,7 +1516,6 @@ function doGet(e) {
 
     let lastSubmittedRecord = null;
 
-    // 健壯的送出機制（修復重複送出 Bug）
     async function submitLeaveRecord() {
       if (isSubmitting) return;
       isSubmitting = true;
@@ -1536,7 +1551,7 @@ function doGet(e) {
       };
 
       try {
-        // 1. 同步寫入雲端資料庫（若有啟用）或本機快取備份
+        // 1. 同步寫入雲端或本地快取
         if (db && currentUser) {
           try {
             const recordsCol = collection(db, 'artifacts', appId, 'public', 'data', 'leaveRecords');
@@ -1555,7 +1570,7 @@ function doGet(e) {
           renderAll();
         }
 
-        // 2. 送至 Google 試算表（非同步，不阻塞畫面）
+        // 2. 送至 Google 試算表
         let syncedToSheets = false;
         if (googleSheetsUrl && googleSheetsUrl.startsWith('https://script.google.com/')) {
           try {
@@ -1634,7 +1649,6 @@ function doGet(e) {
       document.getElementById('input-className').value = '';
       document.getElementById('input-leaveReason').value = '';
       
-      // 隱藏錯誤提示
       for (let i = 1; i <= 6; i++) {
         const err = document.getElementById(`err-step${i}`);
         if (err) err.classList.add('hidden');
@@ -1726,8 +1740,7 @@ function doGet(e) {
 
     function openSheetsModal() {
       const modal = document.getElementById('sheetsModal');
-      const input = document.getElementById('input-sheetsUrl');
-      if (input) input.value = googleSheetsUrl;
+      updateSheetsUI();
       modal.classList.remove('hidden');
     }
 
@@ -1799,7 +1812,6 @@ function doGet(e) {
       showToast('排序已更新', document.getElementById('sortSelect').selectedOptions[0].text, 'info');
     }
 
-    // 健壯的排序函數（修復 NaN 造成的不穩定排序 Bug）
     function getSortedRecords(records) {
       const arr = [...records];
       arr.sort((a, b) => {
@@ -1830,7 +1842,6 @@ function doGet(e) {
       const statsGrid = document.getElementById('dynamicStatsGrid');
       const pillsContainer = document.getElementById('filterPillsContainer');
 
-      // 1. 動態繪製統計卡片
       if (statsGrid) {
         statsGrid.innerHTML = classOptions.map((cName, idx) => {
           const count = leaveRecords.filter(r => r.className === cName).length;
@@ -1846,7 +1857,6 @@ function doGet(e) {
         }).join('');
       }
 
-      // 2. 動態繪製篩選按鈕列
       if (pillsContainer) {
         let pillsHtml = `
           <button onclick="filterByClass('ALL')" id="filterBtn-ALL" class="filter-pill px-3 py-1.5 rounded-full ${currentFilterClass === 'ALL' ? 'bg-neutral-900 text-white font-semibold' : 'bg-white border border-neutral-200 text-neutral-600 font-medium'} whitespace-nowrap">
@@ -1946,7 +1956,6 @@ function doGet(e) {
       renderRollCallCards();
     }
 
-    // 健壯的點名模式渲染（使用 normalizeDateStr 精準比對日期，修復缺席查不到 Bug）
     function renderRollCallCards() {
       const container = document.getElementById('rollCallCards');
       if (!container) return;
@@ -2005,7 +2014,6 @@ function doGet(e) {
       renderCardsList();
     }
 
-    // 健壯的 CSV 匯出（修復引號換行跳脫 Bug）
     function exportToCSV() {
       if (leaveRecords.length === 0) {
         showToast('無資料', '目前尚無請假紀錄可匯出', 'error');
