@@ -1,0 +1,2138 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>線上請假管理系統</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & Noto Sans TC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Inter"', '"Noto Sans TC"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
+          colors: {
+            surface: {
+              50: '#fafafa',
+              100: '#f5f5f7',
+              200: '#e5e5ea',
+              300: '#d1d1d6',
+              800: '#1c1c1e',
+              900: '#000000'
+            }
+          },
+          boxShadow: {
+            'clean': '0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03)',
+            'subtle': '0 12px 32px -4px rgba(0, 0, 0, 0.06)'
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      background-color: #fafafa;
+      color: #1c1c1e;
+    }
+    .safe-bottom {
+      padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px);
+    }
+    .fade-enter {
+      animation: gentleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes gentleIn {
+      0% { opacity: 0; transform: translateY(8px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-[#fafafa] text-neutral-900 min-h-screen flex flex-col antialiased selection:bg-neutral-900 selection:text-white">
+
+  <!-- 頂部導航列 -->
+  <header class="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-neutral-200/80 px-4 py-3.5 transition-all">
+    <div class="max-w-xl mx-auto flex items-center justify-between">
+      
+      <!-- Logo 識別 -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg bg-neutral-900 flex items-center justify-center text-white text-xs font-bold tracking-tight">
+          P
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-bold tracking-tight text-neutral-900">線上請假系統</span>
+          <span class="text-[10px] font-mono text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded">v2.8</span>
+        </div>
+      </div>
+
+      <!-- 右側控制 -->
+      <div class="flex items-center gap-2">
+        <!-- 音效切換 -->
+        <button 
+          id="soundToggleBtn" 
+          onclick="toggleSoundEffect()" 
+          title="介面微音效"
+          class="w-8 h-8 rounded-full border border-neutral-200 bg-white text-neutral-500 hover:text-neutral-900 flex items-center justify-center text-xs transition active:scale-95"
+        >
+          <span id="soundIcon">🔊</span>
+        </button>
+
+        <!-- 前後台切換 -->
+        <div class="flex bg-neutral-100 p-0.5 rounded-full border border-neutral-200/60">
+          <button 
+            id="tabBtnStudent" 
+            onclick="switchView('student')" 
+            class="px-3.5 py-1 rounded-full text-xs font-semibold transition-all bg-white text-neutral-900 shadow-sm"
+          >
+            學生填單
+          </button>
+          <button 
+            id="tabBtnAdmin" 
+            onclick="attemptEnterAdmin()" 
+            class="px-3.5 py-1 rounded-full text-xs font-medium transition-all text-neutral-500 hover:text-neutral-900 flex items-center gap-1.5"
+          >
+            <span>後台數據</span>
+            <span id="badgeCount" class="px-1.5 py-0.2 rounded-full bg-neutral-200 text-[10px] font-mono font-semibold text-neutral-700">0</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Google Sheets 串接彈窗 -->
+  <div id="sheetsModal" class="hidden fixed inset-0 z-50 bg-neutral-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-neutral-200 max-w-lg w-full rounded-2xl p-6 shadow-subtle space-y-4 fade-enter max-h-[90vh] overflow-y-auto no-scrollbar">
+      <div class="flex items-center justify-between border-b border-neutral-100 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">📊</span>
+          <h3 class="text-sm font-bold text-neutral-900">Google Sheets 即時同步設定</h3>
+        </div>
+        <button onclick="closeSheetsModal()" class="text-neutral-400 hover:text-neutral-700 text-sm">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs text-neutral-600 leading-relaxed">
+        <p>設定後，<strong>任何學生在不同手機/電腦填寫請假單</strong>，都會即時自動寫入您指定的 Google 試算表！</p>
+        
+        <div class="space-y-1.5 bg-neutral-50 p-3 rounded-xl border border-neutral-200">
+          <label class="block font-semibold text-neutral-800">Google Apps Script 網頁應用程式網址：</label>
+          <input 
+            type="url" 
+            id="input-sheetsUrl" 
+            placeholder="https://script.google.com/macros/s/.../exec"
+            class="w-full px-3 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-mono outline-none focus:border-neutral-900 text-neutral-900"
+          >
+          <div class="flex justify-between items-center pt-1">
+            <span id="sheetsSaveStatus" class="text-[11px] text-neutral-400 font-mono">尚未設定</span>
+            <button onclick="saveSheetsUrl()" class="px-3 py-1 bg-neutral-900 text-white rounded-lg font-semibold hover:bg-neutral-800 transition active:scale-95">
+              儲存並啟用同步
+            </button>
+          </div>
+        </div>
+
+        <div class="border border-neutral-200 rounded-xl p-3.5 space-y-2.5 bg-white">
+          <div class="flex items-center justify-between pb-1">
+            <h4 class="font-bold text-neutral-900 text-xs flex items-center gap-1.5">
+              <span>⚡</span> Google Apps Script 程式碼
+            </h4>
+            <button onclick="copyGasScriptCode()" class="text-[11px] font-medium text-emerald-600 hover:text-emerald-700 underline">
+              一鍵複製代碼
+            </button>
+          </div>
+          <pre id="gasCodeBlock" class="p-2.5 bg-neutral-50 rounded-lg border border-neutral-100 font-mono text-[10px] text-neutral-700 overflow-x-auto select-all">function doPost(e) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var d = JSON.parse(e.postData.contents);
+    sheet.appendRow([
+      d.createdAt || Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy/MM/dd HH:mm:ss"),
+      d.studentId,
+      d.name,
+      d.phone,
+      d.className,
+      d.leaveDate,
+      d.leaveType,
+      d.reason
+    ]);
+    return ContentService.createTextOutput(JSON.stringify({status:"ok"})).setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({status:"error",error:err.toString()})).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var rows = sheet.getDataRange().getValues();
+    var data = [];
+    for (var i = 1; i < rows.length; i++) {
+      var r = rows[i];
+      if (!r[1] && !r[2]) continue;
+      data.push({
+        id: "GS-" + i,
+        createdAt: r[0] ? (r[0] instanceof Date ? Utilities.formatDate(r[0], "Asia/Taipei", "yyyy/MM/dd HH:mm") : String(r[0])) : "",
+        studentId: String(r[1] || ""),
+        name: String(r[2] || ""),
+        phone: String(r[3] || ""),
+        className: String(r[4] || ""),
+        leaveDate: r[5] ? (r[5] instanceof Date ? Utilities.formatDate(r[5], "Asia/Taipei", "yyyy-MM-dd") : String(r[5])) : "",
+        leaveType: String(r[6] || "事假"),
+        reason: String(r[7] || "")
+      });
+    }
+    return ContentService.createTextOutput(JSON.stringify({status:"ok", records: data}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({status:"error", error: err.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}</pre>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-1">
+        <button onclick="closeSheetsModal()" class="px-4 py-2 text-xs font-semibold rounded-xl bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition">
+          關閉
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 班級與假別管理彈窗 -->
+  <div id="optionsConfigModal" class="hidden fixed inset-0 z-50 bg-neutral-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-neutral-200 max-w-md w-full rounded-2xl p-6 shadow-subtle space-y-5 fade-enter max-h-[90vh] overflow-y-auto no-scrollbar">
+      <div class="flex items-center justify-between border-b border-neutral-100 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg bg-neutral-900 text-white flex items-center justify-center text-xs font-bold">⚙️</span>
+          <h3 class="text-sm font-bold text-neutral-900">班級與假別自訂編輯</h3>
+        </div>
+        <button onclick="closeOptionsModal()" class="text-neutral-400 hover:text-neutral-700 text-sm">✕</button>
+      </div>
+
+      <!-- 班級管理 -->
+      <div class="space-y-2.5">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold text-neutral-800">班級清單</label>
+          <span class="text-[11px] text-neutral-400">前台單選與後台統計將同步套用</span>
+        </div>
+        
+        <div id="classListContainer" class="flex flex-wrap gap-2 p-2.5 bg-neutral-50 rounded-xl border border-neutral-100 min-h-[44px]">
+          <!-- 班級標籤動態生成 -->
+        </div>
+
+        <div class="flex gap-2">
+          <input 
+            type="text" 
+            id="newClassNameInput" 
+            placeholder="新增班級名稱，如：高三信" 
+            class="flex-1 px-3 py-2 bg-white border border-neutral-200 rounded-xl text-xs outline-none focus:border-neutral-900"
+            onkeydown="if(event.key==='Enter') addClassOption()"
+          >
+          <button onclick="addClassOption()" class="px-3 py-2 bg-neutral-900 text-white rounded-xl text-xs font-semibold hover:bg-neutral-800 active:scale-95 transition">
+            新增班級
+          </button>
+        </div>
+      </div>
+
+      <!-- 假別管理 -->
+      <div class="space-y-2.5 border-t border-neutral-100 pt-4">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold text-neutral-800">請假假別清單</label>
+          <span class="text-[11px] text-neutral-400">前台假別選項將同步更新</span>
+        </div>
+        
+        <div id="typeListContainer" class="flex flex-wrap gap-2 p-2.5 bg-neutral-50 rounded-xl border border-neutral-100 min-h-[44px]">
+          <!-- 假別標籤動態生成 -->
+        </div>
+
+        <div class="flex gap-2">
+          <input 
+            type="text" 
+            id="newTypeNameInput" 
+            placeholder="新增假別，如：喪假、生理假" 
+            class="flex-1 px-3 py-2 bg-white border border-neutral-200 rounded-xl text-xs outline-none focus:border-neutral-900"
+            onkeydown="if(event.key==='Enter') addTypeOption()"
+          >
+          <button onclick="addTypeOption()" class="px-3 py-2 bg-neutral-900 text-white rounded-xl text-xs font-semibold hover:bg-neutral-800 active:scale-95 transition">
+            新增假別
+          </button>
+        </div>
+      </div>
+
+      <!-- 後台密碼修改 -->
+      <div class="space-y-2.5 border-t border-neutral-100 pt-4">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold text-neutral-800">管理員密碼設定</label>
+          <span class="text-[11px] text-neutral-400">保護後台資料隱私</span>
+        </div>
+        <div class="flex gap-2">
+          <input 
+            type="password" 
+            id="changeAdminPasswordInput" 
+            placeholder="設定新密碼" 
+            class="flex-1 px-3 py-2 bg-white border border-neutral-200 rounded-xl text-xs outline-none focus:border-neutral-900"
+          >
+          <button onclick="updateAdminPassword()" class="px-3 py-2 bg-neutral-900 text-white rounded-xl text-xs font-semibold hover:bg-neutral-800 active:scale-95 transition">
+            更新密碼
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-between items-center border-t border-neutral-100 pt-3">
+        <button onclick="resetOptionsToDefault()" class="text-xs text-neutral-400 hover:text-rose-600 transition">
+          恢復預設選項
+        </button>
+        <button onclick="closeOptionsModal()" class="px-4 py-2 text-xs font-semibold rounded-xl bg-neutral-900 text-white hover:bg-neutral-800 transition">
+          完成儲存
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理員密碼驗證彈窗 -->
+  <div id="adminAuthModal" class="hidden fixed inset-0 z-50 bg-neutral-900/30 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-neutral-200/90 max-w-sm w-full rounded-2xl p-6 shadow-subtle space-y-4 fade-enter">
+      <div class="space-y-1">
+        <h3 class="text-base font-bold text-neutral-900">後台權限驗證</h3>
+        <p class="text-xs text-neutral-500">請輸入管理員密碼以查看學生出勤資料</p>
+      </div>
+
+      <div class="space-y-2">
+        <input 
+          type="password" 
+          id="adminPasswordInput" 
+          placeholder="請輸入密碼" 
+          onkeydown="if(event.key==='Enter') verifyAdminPassword()"
+          class="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-sm font-medium text-neutral-900 outline-none focus:bg-white focus:border-neutral-900 transition placeholder:text-neutral-400"
+        >
+        <p id="adminAuthError" class="text-rose-500 text-xs hidden font-medium">密碼錯誤，請重新輸入</p>
+        <div class="text-[11px] text-neutral-400 bg-neutral-50 p-2 rounded-lg border border-neutral-100 flex items-center justify-between">
+          <span>預設初始密碼</span>
+          <span class="font-mono font-semibold text-neutral-600">admin123</span>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-1">
+        <button onclick="closeAdminAuthModal()" class="flex-1 py-2 text-xs font-medium rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-50 transition active:scale-95">
+          取消
+        </button>
+        <button onclick="verifyAdminPassword()" class="flex-1 py-2 text-xs font-semibold rounded-xl bg-neutral-900 text-white hover:bg-neutral-800 transition active:scale-95">
+          確認登入
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 浮動通知 -->
+  <div id="toastNotification" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 transform transition-all duration-300 translate-y-[-16px] opacity-0 pointer-events-none w-[90%] max-w-sm bg-white border border-neutral-200 rounded-2xl shadow-subtle p-3.5 flex items-center gap-3">
+    <div id="toastIcon" class="w-7 h-7 rounded-full bg-neutral-100 text-neutral-900 flex items-center justify-center flex-shrink-0 text-xs font-bold">
+      ✓
+    </div>
+    <div class="flex-1 min-w-0">
+      <p id="toastTitle" class="text-xs font-bold text-neutral-900">通知</p>
+      <p id="toastMessage" class="text-[11px] text-neutral-500 truncate mt-0.5">內容說明</p>
+    </div>
+  </div>
+
+  <!-- 主內容容器 -->
+  <main class="flex-1 max-w-lg w-full mx-auto px-4 py-6 sm:py-8 flex flex-col justify-between">
+
+    <!-- 視圖 1: 學生單一問題分步請假 -->
+    <section id="studentView" class="fade-enter w-full flex-1 flex flex-col justify-between">
+      
+      <!-- 主填表區塊 -->
+      <div id="stepCardContainer" class="flex-1 flex flex-col justify-between">
+        
+        <!-- 頂部進度條 -->
+        <div class="space-y-2 mb-6">
+          <div class="flex items-center justify-between text-xs">
+            <span id="stepIndicatorText" class="font-mono text-neutral-400 font-medium text-[11px] tracking-wide">
+              STEP 01 / 07
+            </span>
+            <span id="stepPercentText" class="font-mono text-neutral-400 font-medium text-[11px]">14%</span>
+          </div>
+          <div class="w-full bg-neutral-200/70 h-1 rounded-full overflow-hidden">
+            <div id="progressBar" class="bg-neutral-900 h-full w-[14%] transition-all duration-300 ease-out"></div>
+          </div>
+        </div>
+
+        <!-- 步驟內容區 (7 個步驟) -->
+        <div class="flex-1 flex flex-col justify-center py-4">
+          
+          <!-- STEP 1: 學號 -->
+          <div id="step-1" class="step-panel space-y-6">
+            <div class="space-y-1.5">
+              <span class="text-[11px] font-mono font-semibold text-neutral-400">01 — 學號</span>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">你的學號是？</h2>
+              <p class="text-xs text-neutral-500">供出缺席名冊查核與登錄</p>
+            </div>
+            <div class="pt-2">
+              <input 
+                type="text" 
+                id="input-studentId" 
+                placeholder="請輸入學號，例如 1120401" 
+                autocomplete="off"
+                oninput="document.getElementById('err-step1').classList.add('hidden')"
+                onkeydown="handleKeyNavigation(event, 1)"
+                class="w-full text-xl sm:text-2xl font-mono font-semibold text-neutral-900 border-b-2 border-neutral-200 focus:border-neutral-900 outline-none py-2.5 bg-transparent placeholder:text-neutral-300 transition"
+              >
+              <p id="err-step1" class="text-rose-500 text-xs mt-2 hidden font-medium">請填寫學號</p>
+            </div>
+          </div>
+
+          <!-- STEP 2: 姓名 -->
+          <div id="step-2" class="step-panel hidden space-y-6">
+            <div class="space-y-1.5">
+              <span class="text-[11px] font-mono font-semibold text-neutral-400">02 — 姓名</span>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">請問你的姓名？</h2>
+              <p class="text-xs text-neutral-500">請填寫真實中文全名</p>
+            </div>
+            <div class="pt-2">
+              <input 
+                type="text" 
+                id="input-studentName" 
+                placeholder="例如：陳大明" 
+                autocomplete="off"
+                oninput="document.getElementById('err-step2').classList.add('hidden')"
+                onkeydown="handleKeyNavigation(event, 2)"
+                class="w-full text-xl sm:text-2xl font-bold text-neutral-900 border-b-2 border-neutral-200 focus:border-neutral-900 outline-none py-2.5 bg-transparent placeholder:text-neutral-300 transition"
+              >
+              <p id="err-step2" class="text-rose-500 text-xs mt-2 hidden font-medium">請填寫姓名</p>
+            </div>
+          </div>
+
+          <!-- STEP 3: 電話號碼 -->
+          <div id="step-3" class="step-panel hidden space-y-6">
+            <div class="space-y-1.5">
+              <span class="text-[11px] font-mono font-semibold text-neutral-400">03 — 聯絡電話</span>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">緊急聯絡電話？</h2>
+              <p class="text-xs text-neutral-500">老師或助教緊急核對時聯絡使用</p>
+            </div>
+            <div class="pt-2">
+              <input 
+                type="tel" 
+                id="input-phoneNumber" 
+                placeholder="例如：0912345678" 
+                autocomplete="off"
+                oninput="document.getElementById('err-step3').classList.add('hidden')"
+                onkeydown="handleKeyNavigation(event, 3)"
+                class="w-full text-xl sm:text-2xl font-mono font-semibold text-neutral-900 border-b-2 border-neutral-200 focus:border-neutral-900 outline-none py-2.5 bg-transparent placeholder:text-neutral-300 transition"
+              >
+              <p id="err-step3" class="text-rose-500 text-xs mt-2 hidden font-medium">請輸入正確有效的電話號碼</p>
+            </div>
+          </div>
+
+          <!-- STEP 4: 選擇班級 (動態生成) -->
+          <div id="step-4" class="step-panel hidden space-y-6">
+            <div class="space-y-1.5">
+              <span class="text-[11px] font-mono font-semibold text-neutral-400">04 — 班級</span>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">請選擇所屬班級</h2>
+              <p class="text-xs text-neutral-500">點選任一班級將自動前往下一步</p>
+            </div>
+
+            <!-- 動態班級卡片網格 -->
+            <div id="classOptionsGrid" class="grid grid-cols-2 gap-3 pt-1">
+              <!-- JS 動態插入 -->
+            </div>
+            <input type="hidden" id="input-className" value="">
+            <p id="err-step4" class="text-rose-500 text-xs hidden font-medium">請選擇班級</p>
+          </div>
+
+          <!-- STEP 5: 請假日期與假別 (動態生成假別) -->
+          <div id="step-5" class="step-panel hidden space-y-6">
+            <div class="space-y-1.5">
+              <span class="text-[11px] font-mono font-semibold text-neutral-400">05 — 日期與假別</span>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">請假日期與類型</h2>
+              <p class="text-xs text-neutral-500">可使用快捷鍵快速選取</p>
+            </div>
+
+            <div class="space-y-4 pt-1">
+              <!-- 快捷日期 -->
+              <div class="flex gap-2">
+                <button type="button" onclick="setQuickDate(0)" class="flex-1 py-2 text-xs font-semibold rounded-xl bg-white border border-neutral-200 text-neutral-700 hover:border-neutral-900 active:scale-95 transition shadow-sm">
+                  今天
+                </button>
+                <button type="button" onclick="setQuickDate(1)" class="flex-1 py-2 text-xs font-semibold rounded-xl bg-white border border-neutral-200 text-neutral-700 hover:border-neutral-900 active:scale-95 transition shadow-sm">
+                  明天
+                </button>
+                <button type="button" onclick="setQuickDate('next-monday')" class="flex-1 py-2 text-xs font-semibold rounded-xl bg-white border border-neutral-200 text-neutral-700 hover:border-neutral-900 active:scale-95 transition shadow-sm">
+                  下週一
+                </button>
+              </div>
+
+              <!-- 自訂日期選擇框 -->
+              <input 
+                type="date" 
+                id="input-leaveDate" 
+                class="w-full text-sm font-mono font-semibold px-4 py-3 bg-white border border-neutral-200 rounded-xl focus:border-neutral-900 outline-none text-neutral-900 transition shadow-sm"
+              >
+
+              <!-- 動態假別選擇按鈕列 -->
+              <div>
+                <label class="block text-xs font-medium text-neutral-500 mb-2">請假假別</label>
+                <div id="leaveTypeButtonGrid" class="gap-2">
+                  <!-- JS 動態插入 -->
+                </div>
+                <input type="hidden" id="input-leaveType" value="事假">
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 6: 填寫事由備註 -->
+          <div id="step-6" class="step-panel hidden space-y-4">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-mono font-semibold text-neutral-400">06 — 事由備註</span>
+                <button 
+                  type="button" 
+                  id="voiceInputBtn" 
+                  onclick="toggleVoiceSpeech()" 
+                  class="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 flex items-center gap-1.5 transition shadow-sm"
+                >
+                  <span id="voiceIcon">🎙</span>
+                  <span id="voiceStatusText">語音填寫</span>
+                </button>
+              </div>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">請假事由備註</h2>
+              <p class="text-xs text-neutral-500">可自行填寫，或點擊下方快捷生成事由</p>
+            </div>
+
+            <!-- 快捷事由標籤 -->
+            <div class="bg-white border border-neutral-200/80 p-3 rounded-2xl shadow-sm space-y-2">
+              <div class="flex items-center justify-between text-[11px] text-neutral-400">
+                <span class="font-medium">快速套用：</span>
+                <span class="text-[10px]">點擊填入</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="generateExcuse('sick')" class="px-2.5 py-1 rounded-lg text-xs bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border border-neutral-200 transition active:scale-95">
+                  看診休養
+                </button>
+                <button type="button" onclick="generateExcuse('family')" class="px-2.5 py-1 rounded-lg text-xs bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border border-neutral-200 transition active:scale-95">
+                  家庭要事
+                </button>
+                <button type="button" onclick="generateExcuse('official')" class="px-2.5 py-1 rounded-lg text-xs bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border border-neutral-200 transition active:scale-95">
+                  公假集訓
+                </button>
+                <button type="button" onclick="generateExcuse('quirky')" class="px-2.5 py-1 rounded-lg text-xs bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border border-neutral-200 transition active:scale-95">
+                  幽默藉口
+                </button>
+              </div>
+            </div>
+
+            <div class="pt-1">
+              <textarea 
+                id="input-leaveReason" 
+                rows="3" 
+                oninput="document.getElementById('err-step6').classList.add('hidden')"
+                placeholder="在此輸入詳細事由（或點擊上方快捷事由）"
+                class="w-full text-sm px-4 py-3 bg-white border border-neutral-200 rounded-xl focus:border-neutral-900 text-neutral-900 outline-none transition resize-none placeholder:text-neutral-400 shadow-sm"
+              ></textarea>
+              <p id="err-step6" class="text-rose-500 text-xs mt-1.5 hidden font-medium">請填寫請假事由</p>
+            </div>
+          </div>
+
+          <!-- STEP 7: 總覽確認 -->
+          <div id="step-7" class="step-panel hidden space-y-4">
+            <div class="space-y-1">
+              <span class="text-[11px] font-mono font-semibold text-neutral-400">07 — 確認</span>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">請核對並送出</h2>
+              <p class="text-xs text-neutral-500">確認以下資訊無誤即可建立假單</p>
+            </div>
+
+            <div class="p-4 bg-white rounded-2xl border border-neutral-200/90 text-xs space-y-2.5 text-neutral-700 shadow-clean">
+              <div class="flex justify-between items-center py-1.5 border-b border-neutral-100">
+                <span class="text-neutral-400">學號姓名</span>
+                <span class="font-bold text-neutral-900"><span id="preview-id">-</span> · <span id="preview-name">-</span></span>
+              </div>
+              <div class="flex justify-between items-center py-1.5 border-b border-neutral-100">
+                <span class="text-neutral-400">聯絡電話</span>
+                <span id="preview-phone" class="font-mono font-medium text-neutral-900">-</span>
+              </div>
+              <div class="flex justify-between items-center py-1.5 border-b border-neutral-100">
+                <span class="text-neutral-400">所屬班級</span>
+                <span id="preview-class" class="font-bold text-neutral-900">-</span>
+              </div>
+              <div class="flex justify-between items-center py-1.5 border-b border-neutral-100">
+                <span class="text-neutral-400">請假日期</span>
+                <span id="preview-date-type" class="font-medium text-neutral-900">-</span>
+              </div>
+              <div class="pt-1">
+                <span class="text-neutral-400 block mb-1">事由備註</span>
+                <div id="preview-reason" class="p-3 bg-neutral-50 rounded-xl border border-neutral-100 text-neutral-800 leading-relaxed break-words text-xs">-</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 底部控制按鈕列 -->
+        <div class="pt-4 flex items-center justify-between gap-3 safe-bottom">
+          <button 
+            type="button" 
+            id="prevBtn" 
+            onclick="goToStep(currentStep - 1)" 
+            class="hidden px-5 py-3 text-xs font-semibold text-neutral-600 bg-white hover:bg-neutral-50 border border-neutral-200 rounded-xl transition active:scale-95 shadow-sm"
+          >
+            上一步
+          </button>
+          <div id="prevSpacer" class="flex-1"></div>
+
+          <button 
+            type="button" 
+            id="nextBtn" 
+            onclick="handleNextStep()" 
+            class="flex-1 sm:flex-initial px-8 py-3 bg-neutral-900 hover:bg-neutral-800 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5"
+          >
+            <span id="nextBtnText">下一步</span>
+            <span class="text-[10px]">→</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- 登記成功收執憑證 -->
+      <div id="receiptModal" class="hidden fade-enter space-y-4 my-auto">
+        <div class="bg-white text-neutral-900 rounded-3xl p-6 shadow-clean relative border border-neutral-200/90 space-y-4">
+          
+          <div class="flex items-center justify-between border-b border-dashed border-neutral-200 pb-3">
+            <div>
+              <h3 class="font-bold text-sm text-neutral-900">電子假單憑證</h3>
+              <span class="text-[10px] font-mono text-neutral-400">LEAVE PASS RECEIPT</span>
+            </div>
+            <span class="px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-700 text-[10px] font-semibold">
+              已登記
+            </span>
+          </div>
+
+          <div class="space-y-3 font-mono text-xs">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <span class="text-[10px] text-neutral-400 font-sans block">姓名學號</span>
+                <span id="ticket-name-id" class="font-bold text-neutral-900 text-sm font-sans">-</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-neutral-400 font-sans block">所屬班級</span>
+                <span id="ticket-class" class="font-bold text-neutral-900 text-sm font-sans">-</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-100">
+              <div>
+                <span class="text-[10px] text-neutral-400 font-sans block">請假日期</span>
+                <span id="ticket-date" class="font-semibold text-neutral-900">-</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-neutral-400 font-sans block">請假類別</span>
+                <span id="ticket-type" class="font-semibold text-neutral-900 font-sans">-</span>
+              </div>
+            </div>
+
+            <div class="pt-1 border-t border-neutral-100">
+              <span class="text-[10px] text-neutral-400 font-sans block">事由備註</span>
+              <p id="ticket-reason" class="font-sans text-xs text-neutral-700 font-normal leading-relaxed break-words mt-0.5">-</p>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-dashed border-neutral-200 flex items-center justify-between text-neutral-400 font-mono text-[10px]">
+            <span id="ticket-code">PASS-000000</span>
+            <div class="flex items-center gap-1.5">
+              <span id="ticket-sheets-status" class="hidden text-[10px] font-sans px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                已同步 Sheets
+              </span>
+              <span class="tracking-widest select-none">|||||||||||||||||</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <button 
+            onclick="shareToLine()" 
+            class="py-2.5 px-4 rounded-xl bg-[#06C755] hover:bg-[#05b34c] text-white text-xs font-semibold transition active:scale-95 flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <span>傳至 LINE</span>
+          </button>
+          <button 
+            onclick="copyTicketSummary()" 
+            class="py-2.5 px-4 rounded-xl bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold transition active:scale-95 shadow-sm"
+          >
+            複製文字
+          </button>
+        </div>
+
+        <button 
+          onclick="resetAndFillAnother()" 
+          class="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold transition active:scale-95"
+        >
+          填寫下一筆
+        </button>
+      </div>
+
+    </section>
+
+    <!-- 視圖 2: 數據管理後台 -->
+    <section id="adminView" class="hidden fade-enter space-y-4 w-full pb-10">
+      
+      <!-- 後台頂部控制列 -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white border border-neutral-200 p-4 rounded-2xl shadow-clean gap-3">
+        <div>
+          <h2 class="text-sm font-bold text-neutral-900">請假名冊與數據後台</h2>
+          <p class="text-[11px] text-neutral-400">即時監控學生請假出勤狀態</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- 選項設定按鈕 -->
+          <button 
+            onclick="openOptionsModal()" 
+            class="px-2.5 py-1.5 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 text-xs font-medium text-neutral-700 flex items-center gap-1 transition"
+            title="編輯班級、假別與密碼"
+          >
+            <span>⚙️</span>
+            <span>自訂選項</span>
+          </button>
+
+          <!-- 重新整理雲端試算表按鈕 -->
+          <button 
+            onclick="fetchFromGoogleSheets(true)" 
+            id="refreshSheetsBtn"
+            class="px-2.5 py-1.5 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 text-xs font-medium text-neutral-700 flex items-center gap-1 transition"
+            title="從 Google Sheets 重新同步"
+          >
+            <span>🔄</span>
+            <span class="hidden sm:inline">同步試算表</span>
+          </button>
+
+          <!-- Google Sheets 串接設定按鈕 -->
+          <button 
+            onclick="openSheetsModal()" 
+            id="sheetsStatusBtn"
+            class="px-2.5 py-1.5 rounded-xl border border-neutral-200 bg-white hover:border-emerald-600 text-xs font-medium text-neutral-700 flex items-center gap-1.5 transition"
+            title="設定 Google Sheets 即時同步"
+          >
+            <span class="w-2 h-2 rounded-full bg-neutral-300" id="sheetsIndicator"></span>
+            <span>Google 試算表</span>
+          </button>
+
+          <!-- 點名模式切換 -->
+          <button onclick="toggleRollCallMode()" id="rollCallToggleBtn" class="px-3 py-1.5 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 text-xs font-medium text-neutral-700 transition">
+            點名模式
+          </button>
+          
+          <!-- 登出 -->
+          <button onclick="adminLogout()" class="px-2.5 py-1.5 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 text-xs font-medium text-neutral-500 hover:text-rose-600 transition" title="登出後台">
+            登出
+          </button>
+        </div>
+      </div>
+
+      <!-- 動態班級統計卡片網格 -->
+      <div id="dynamicStatsGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <!-- JS 動態生成統計卡片 -->
+      </div>
+
+      <!-- 篩選、排序與搜尋操作區 -->
+      <div class="space-y-2">
+        <!-- 班級滑動標籤 (動態生成) -->
+        <div id="filterPillsContainer" class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+          <!-- JS 動態插入 -->
+        </div>
+
+        <!-- 搜尋與控制欄 -->
+        <div class="flex flex-wrap sm:flex-nowrap gap-2">
+          <input 
+            type="text" 
+            id="tableSearch" 
+            oninput="handleSearch(this.value)" 
+            placeholder="搜尋姓名、學號或事由..." 
+            class="flex-1 min-w-[140px] px-3.5 py-2 bg-white border border-neutral-200 rounded-xl text-xs text-neutral-900 outline-none focus:border-neutral-900 placeholder:text-neutral-400 shadow-sm transition"
+          >
+          
+          <!-- 排序方式切換選單 -->
+          <div class="flex items-center bg-white border border-neutral-200 rounded-xl px-2 shadow-sm">
+            <span class="text-[11px] text-neutral-400 mr-1.5 whitespace-nowrap">排序：</span>
+            <select 
+              id="sortSelect" 
+              onchange="handleSortChange(this.value)"
+              class="text-xs bg-transparent text-neutral-800 font-medium outline-none py-2 cursor-pointer"
+            >
+              <option value="created-desc">送出時間 (新→舊)</option>
+              <option value="created-asc">送出時間 (舊→新)</option>
+              <option value="leave-desc">請假日期 (最新日期)</option>
+              <option value="leave-asc">請假日期 (最遠日期)</option>
+            </select>
+          </div>
+
+          <button 
+            onclick="exportToCSV()" 
+            title="匯出 Excel" 
+            class="px-3.5 py-2 bg-white border border-neutral-200 hover:border-neutral-900 text-neutral-800 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition shadow-sm whitespace-nowrap"
+          >
+            <span>匯出 Excel</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 點名大字模式 (已修正全格式日期比對) -->
+      <div id="rollCallContainer" class="hidden space-y-3">
+        <div class="flex items-center justify-between bg-white border border-neutral-200 p-3 rounded-2xl shadow-clean">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-neutral-700">查核日期：</span>
+            <input 
+              type="date" 
+              id="rollCallDatePicker" 
+              onchange="renderRollCallCards()"
+              class="text-xs font-mono font-semibold px-2.5 py-1 bg-neutral-50 border border-neutral-200 rounded-lg outline-none text-neutral-900"
+            >
+          </div>
+          <button 
+            onclick="resetRollCallDateToday()" 
+            class="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-xs font-semibold transition"
+          >
+            回到今天
+          </button>
+        </div>
+        <div id="rollCallCards" class="space-y-2"></div>
+      </div>
+
+      <!-- 常規記錄列表 -->
+      <div id="regularListContainer" class="space-y-2.5">
+        <div id="recordsCardsContainer" class="space-y-2.5">
+          <!-- 卡片動態插入 -->
+        </div>
+
+        <!-- 無資料提示 -->
+        <div id="emptyState" class="hidden py-12 text-center bg-white border border-neutral-200 rounded-2xl p-6 shadow-sm">
+          <p class="text-xs font-semibold text-neutral-700">目前尚無符合的請假資料</p>
+          <p class="text-[11px] text-neutral-400 mt-1">可切換至前台填寫，或更換篩選條件</p>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, addDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    /* ==========================================================================
+       【Vercel 部署設定】填入 Google Apps Script 網頁應用程式網址：
+       ========================================================================== */
+    const DEFAULT_GOOGLE_SHEETS_URL = ""; 
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'leave-system-app';
+    let app = null;
+    let auth = null;
+    let db = null;
+    let currentUser = null;
+
+    try {
+      if (typeof __firebase_config !== 'undefined') {
+        const firebaseConfig = JSON.parse(__firebase_config);
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+      }
+    } catch (err) {
+      console.warn("Cloud config error:", err);
+    }
+
+    // 預設選項設定
+    const DEFAULT_CLASSES = ['英Ｂ', '英Ｌ', '數甲', '大學生'];
+    const DEFAULT_TYPES = ['事假', '病假', '公假', '其他'];
+
+    let classOptions = JSON.parse(localStorage.getItem('app_class_options') || 'null') || DEFAULT_CLASSES;
+    let leaveTypeOptions = JSON.parse(localStorage.getItem('app_type_options') || 'null') || DEFAULT_TYPES;
+
+    // 本地快取請假紀錄
+    let leaveRecords = JSON.parse(localStorage.getItem('app_leave_records') || '[]');
+    let currentFilterClass = 'ALL';
+    let searchQuery = '';
+    let currentSort = 'created-desc';
+    let currentStep = 1;
+    const totalSteps = 7;
+    let isRollCallMode = false;
+    let isSubmitting = false; // 防重複送出鎖
+
+    // 後台管理密碼（支援自訂更新）
+    let adminPassword = localStorage.getItem('app_admin_password') || 'admin123';
+    let isAdminAuthenticated = false;
+
+    // Google Sheets 網址
+    let googleSheetsUrl = (DEFAULT_GOOGLE_SHEETS_URL || localStorage.getItem('app_sheets_url') || '').trim();
+
+    let soundEnabled = true;
+    let audioCtx = null;
+
+    // 取得當前本地格式化日期 (YYYY-MM-DD)，消除時區問題
+    function getLocalDateString(d = new Date()) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // 日期字串全格式標準化（修復 2026/9/1 與 2026-09-01 不吻合的 Bug）
+    function normalizeDateStr(str) {
+      if (!str) return '';
+      const parts = String(str).trim().split(/[\/\-.]/);
+      if (parts.length === 3) {
+        const y = parts[0];
+        const m = parts[1].padStart(2, '0');
+        const d = parts[2].padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      return String(str).trim();
+    }
+
+    // 容錯解析時間戳記（修復 iOS Safari 對非標準日期字串回傳 NaN 破壞排序）
+    function parseTimestamp(record) {
+      if (record.timestamp && !isNaN(Number(record.timestamp))) {
+        return Number(record.timestamp);
+      }
+      if (record.createdAt) {
+        const clean = String(record.createdAt).trim().replace(/\//g, '-');
+        const parsed = Date.parse(clean);
+        if (!isNaN(parsed)) return parsed;
+        const d = new Date(record.createdAt);
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+      return 0;
+    }
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTone(freq, duration = 0.05, type = 'sine') {
+      if (!soundEnabled) return;
+      try {
+        initAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function toggleSoundEffect() {
+      soundEnabled = !soundEnabled;
+      const icon = document.getElementById('soundIcon');
+      if (icon) icon.innerText = soundEnabled ? '🔊' : '🔇';
+      showToast('音效設定', soundEnabled ? '已開啟介面微音效' : '已關閉音效', 'info');
+      if (soundEnabled) playTone(500, 0.04);
+    }
+
+    function triggerHaptic() {
+      if (navigator.vibrate) {
+        try { navigator.vibrate(8); } catch (e) {}
+      }
+    }
+
+    async function initCloudPersistence() {
+      if (!auth || !db) {
+        renderAll();
+        return;
+      }
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+          currentUser = userCredential.user;
+        } else {
+          const userCredential = await signInAnonymously(auth);
+          currentUser = userCredential.user;
+        }
+      } catch (e) {
+        try {
+          const userCredential = await signInAnonymously(auth);
+          currentUser = userCredential.user;
+        } catch (err) {}
+      }
+
+      if (currentUser) {
+        subscribeToCloudRecords();
+        subscribeToSystemConfig();
+      }
+    }
+
+    function subscribeToSystemConfig() {
+      if (!db || !currentUser) return;
+      const configDoc = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config');
+      onSnapshot(configDoc, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data) {
+            if (data.googleSheetsUrl) {
+              googleSheetsUrl = data.googleSheetsUrl.trim();
+              updateSheetsUI();
+            }
+            if (Array.isArray(data.classOptions) && data.classOptions.length > 0) {
+              classOptions = data.classOptions;
+              localStorage.setItem('app_class_options', JSON.stringify(classOptions));
+            }
+            if (Array.isArray(data.leaveTypeOptions) && data.leaveTypeOptions.length > 0) {
+              leaveTypeOptions = data.leaveTypeOptions;
+              localStorage.setItem('app_type_options', JSON.stringify(leaveTypeOptions));
+            }
+            renderFormOptions();
+            renderAll();
+          }
+        }
+      }, (err) => {
+        console.warn("Config listener error:", err);
+      });
+    }
+
+    async function persistCustomOptions() {
+      localStorage.setItem('app_class_options', JSON.stringify(classOptions));
+      localStorage.setItem('app_type_options', JSON.stringify(leaveTypeOptions));
+      if (db && currentUser) {
+        try {
+          const configDoc = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config');
+          await setDoc(configDoc, { classOptions, leaveTypeOptions }, { merge: true });
+        } catch (e) {
+          console.warn("Error persisting options:", e);
+        }
+      }
+      renderFormOptions();
+      renderAll();
+    }
+
+    function updateSheetsUI() {
+      const input = document.getElementById('input-sheetsUrl');
+      const status = document.getElementById('sheetsSaveStatus');
+      const indicator = document.getElementById('sheetsIndicator');
+      if (input && googleSheetsUrl) input.value = googleSheetsUrl;
+      if (status) {
+        status.innerText = googleSheetsUrl ? '已連線啟用中' : '尚未設定';
+        status.className = googleSheetsUrl ? 'text-[11px] text-emerald-600 font-mono font-bold' : 'text-[11px] text-neutral-400 font-mono';
+      }
+      if (indicator) {
+        indicator.className = googleSheetsUrl ? 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse' : 'w-2 h-2 rounded-full bg-neutral-300';
+      }
+    }
+
+    function subscribeToCloudRecords() {
+      if (!db || !currentUser) return;
+      const recordsCol = collection(db, 'artifacts', appId, 'public', 'data', 'leaveRecords');
+      
+      onSnapshot(recordsCol, (snapshot) => {
+        const list = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        leaveRecords = list;
+        localStorage.setItem('app_leave_records', JSON.stringify(leaveRecords));
+        renderAll();
+      }, (error) => {
+        console.error("Cloud snapshot error:", error);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const today = getLocalDateString();
+      const leaveDateInput = document.getElementById('input-leaveDate');
+      if (leaveDateInput) leaveDateInput.value = today;
+
+      const rollCallDatePicker = document.getElementById('rollCallDatePicker');
+      if (rollCallDatePicker) rollCallDatePicker.value = today;
+      
+      renderFormOptions();
+      updateSheetsUI();
+      renderAll();
+      focusCurrentInput();
+      initCloudPersistence();
+
+      if (googleSheetsUrl) {
+        fetchFromGoogleSheets(false);
+      }
+    });
+
+    // 動態繪製前台「班級卡片」與「假別按鈕」（修復動態 Grid 樣式失效）
+    function renderFormOptions() {
+      // 1. 前台步驟 4 班級卡片
+      const classGrid = document.getElementById('classOptionsGrid');
+      const currentClassVal = document.getElementById('input-className').value;
+      if (classGrid) {
+        classGrid.innerHTML = classOptions.map((cName, idx) => {
+          const isSelected = currentClassVal === cName;
+          return `
+            <button 
+              type="button" 
+              onclick="selectClassOption('${escapeHtml(cName)}')"
+              id="opt-class-${idx}"
+              class="class-select-card bg-white hover:border-neutral-900 border ${isSelected ? 'border-neutral-900 bg-neutral-50' : 'border-neutral-200'} p-4 rounded-2xl text-left transition-all active:scale-[0.98] shadow-sm flex flex-col justify-between h-24"
+            >
+              <span class="text-[11px] font-mono text-neutral-400">Class 0${idx + 1}</span>
+              <span class="text-xl font-bold text-neutral-900 truncate">${escapeHtml(cName)}</span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      // 2. 前台步驟 5 假別按鈕（使用原生 CSS Grid 內聯樣式，杜絕 Tailwind 找不到 class 的 Bug）
+      const typeGrid = document.getElementById('leaveTypeButtonGrid');
+      let currentTypeVal = document.getElementById('input-leaveType').value;
+      if (!leaveTypeOptions.includes(currentTypeVal)) {
+        currentTypeVal = leaveTypeOptions[0] || '事假';
+        document.getElementById('input-leaveType').value = currentTypeVal;
+      }
+
+      if (typeGrid) {
+        const cols = leaveTypeOptions.length > 4 ? 3 : Math.min(4, Math.max(2, leaveTypeOptions.length));
+        typeGrid.style.display = 'grid';
+        typeGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        typeGrid.innerHTML = leaveTypeOptions.map(tName => {
+          const isSelected = currentTypeVal === tName;
+          const cls = isSelected 
+            ? "type-btn py-2.5 px-2 rounded-xl border border-neutral-900 bg-neutral-900 text-white font-semibold text-xs text-center transition truncate"
+            : "type-btn py-2.5 px-2 rounded-xl border border-neutral-200 bg-white text-neutral-600 font-medium text-xs text-center transition hover:border-neutral-300 truncate";
+          return `
+            <button type="button" onclick="selectLeaveType('${escapeHtml(tName)}')" class="${cls}" data-type="${escapeHtml(tName)}">
+              ${escapeHtml(tName)}
+            </button>
+          `;
+        }).join('');
+      }
+
+      // 3. 自訂編輯彈窗內的標籤清單
+      renderOptionsModalTags();
+    }
+
+    function renderOptionsModalTags() {
+      const classContainer = document.getElementById('classListContainer');
+      if (classContainer) {
+        classContainer.innerHTML = classOptions.map((c, i) => `
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-800 shadow-sm">
+            <span>${escapeHtml(c)}</span>
+            <button onclick="removeClassOption(${i})" class="text-neutral-400 hover:text-rose-600 text-xs ml-0.5">✕</button>
+          </span>
+        `).join('');
+      }
+
+      const typeContainer = document.getElementById('typeListContainer');
+      if (typeContainer) {
+        typeContainer.innerHTML = leaveTypeOptions.map((t, i) => `
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-800 shadow-sm">
+            <span>${escapeHtml(t)}</span>
+            <button onclick="removeTypeOption(${i})" class="text-neutral-400 hover:text-rose-600 text-xs ml-0.5">✕</button>
+          </span>
+        `).join('');
+      }
+    }
+
+    function openOptionsModal() {
+      renderOptionsModalTags();
+      const pwdInput = document.getElementById('changeAdminPasswordInput');
+      if (pwdInput) pwdInput.value = '';
+      document.getElementById('optionsConfigModal').classList.remove('hidden');
+    }
+
+    function closeOptionsModal() {
+      document.getElementById('optionsConfigModal').classList.add('hidden');
+    }
+
+    function updateAdminPassword() {
+      const pwdInput = document.getElementById('changeAdminPasswordInput');
+      const val = pwdInput.value.trim();
+      if (!val || val.length < 4) {
+        showToast('密碼太短', '管理員密碼長度至少需 4 碼', 'error');
+        return;
+      }
+      adminPassword = val;
+      localStorage.setItem('app_admin_password', val);
+      pwdInput.value = '';
+      showToast('密碼已更新', '後台管理員新密碼已儲存', 'success');
+    }
+
+    function addClassOption() {
+      const input = document.getElementById('newClassNameInput');
+      const val = input.value.trim();
+      if (!val) return;
+      if (classOptions.includes(val)) {
+        showToast('班級已存在', '請勿重複新增相同名稱', 'error');
+        return;
+      }
+      classOptions.push(val);
+      input.value = '';
+      persistCustomOptions();
+      showToast('已新增班級', val, 'success');
+    }
+
+    function removeClassOption(index) {
+      if (classOptions.length <= 1) {
+        showToast('無法刪除', '系統至少需保留一個班級選項', 'error');
+        return;
+      }
+      const removed = classOptions.splice(index, 1);
+      if (currentFilterClass === removed[0]) currentFilterClass = 'ALL';
+      if (document.getElementById('input-className').value === removed[0]) {
+        document.getElementById('input-className').value = '';
+      }
+      persistCustomOptions();
+      showToast('已刪除班級', removed[0], 'info');
+    }
+
+    function addTypeOption() {
+      const input = document.getElementById('newTypeNameInput');
+      const val = input.value.trim();
+      if (!val) return;
+      if (leaveTypeOptions.includes(val)) {
+        showToast('假別已存在', '請勿重複新增相同假別', 'error');
+        return;
+      }
+      leaveTypeOptions.push(val);
+      input.value = '';
+      persistCustomOptions();
+      showToast('已新增假別', val, 'success');
+    }
+
+    function removeTypeOption(index) {
+      if (leaveTypeOptions.length <= 1) {
+        showToast('無法刪除', '系統至少需保留一個假別選項', 'error');
+        return;
+      }
+      const removed = leaveTypeOptions.splice(index, 1);
+      if (document.getElementById('input-leaveType').value === removed[0]) {
+        document.getElementById('input-leaveType').value = leaveTypeOptions[0] || '事假';
+      }
+      persistCustomOptions();
+      showToast('已刪除假別', removed[0], 'info');
+    }
+
+    function resetOptionsToDefault() {
+      if (!confirm("確定要將班級與假別恢復為系統預設選項嗎？")) return;
+      classOptions = [...DEFAULT_CLASSES];
+      leaveTypeOptions = [...DEFAULT_TYPES];
+      currentFilterClass = 'ALL';
+      persistCustomOptions();
+      showToast('已重設選項', '班級與假別已恢復預設', 'success');
+    }
+
+    function setQuickDate(type) {
+      triggerHaptic();
+      playTone(520, 0.04);
+      const d = new Date();
+      if (type === 1) {
+        d.setDate(d.getDate() + 1);
+      } else if (type === 'next-monday') {
+        const day = d.getDay();
+        const diff = d.getDate() + (day === 0 ? 1 : 8 - day);
+        d.setDate(diff);
+      }
+      const val = getLocalDateString(d);
+      document.getElementById('input-leaveDate').value = val;
+      showToast('日期已選擇', val, 'info');
+    }
+
+    function resetRollCallDateToday() {
+      const today = getLocalDateString();
+      document.getElementById('rollCallDatePicker').value = today;
+      renderRollCallCards();
+      showToast('已切換今日', today, 'info');
+    }
+
+    function generateExcuse(type) {
+      triggerHaptic();
+      playTone(560, 0.04);
+      const excuseBox = document.getElementById('input-leaveReason');
+      
+      const excuses = {
+        sick: [
+          "早晨突發高燒與急性腸胃不適，需立即就醫診療與靜養。",
+          "因偏頭痛並伴隨暈眩症狀，醫生囑咐需臥床休養。",
+          "喉嚨發炎並有發燒症狀，今日在家休養就診。"
+        ],
+        family: [
+          "家中長輩今日需前往大醫院回診，需陪同前往照護。",
+          "因家中臨時有重要家務需親自協助處理，特此請事假。",
+          "親友自國外返鄉臨時聚會，需共同協助處理家中要務。"
+        ],
+        official: [
+          "代表學校參加校外專案研習競賽，整日公差培訓出賽。",
+          "配合校隊賽前集訓活動，依教練指示申請公假備戰。"
+        ],
+        quirky: [
+          "今早出門時被家裡的貓咪壓在床上進行靈魂封印，延誤出門需在家安撫主子。",
+          "算命師託夢說今日出門有漏財之虞，需閉關自修一天。",
+          "昨夜寫程式靈感爆棚熬夜苦讀，今早靈魂與肉體尚未成功連線，申請重開機休養。"
+        ]
+      };
+
+      const list = excuses[type] || excuses.sick;
+      const pick = list[Math.floor(Math.random() * list.length)];
+      excuseBox.value = pick;
+      document.getElementById('err-step6').classList.add('hidden');
+      showToast('事由已填入', '可自由編輯修改內容', 'success');
+    }
+
+    let recognition = null;
+    let isRecording = false;
+
+    // 健壯的語音輸入（修復異常中斷狀態卡死的 Bug）
+    function toggleVoiceSpeech() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        showToast('無法使用語音', '瀏覽器不支援語音輸入，請手動鍵入', 'error');
+        return;
+      }
+
+      const voiceIcon = document.getElementById('voiceIcon');
+      const statusText = document.getElementById('voiceStatusText');
+
+      const resetVoiceUI = () => {
+        isRecording = false;
+        if (voiceIcon) voiceIcon.innerText = '🎙';
+        if (statusText) statusText.innerText = '語音填寫';
+      };
+
+      if (isRecording) {
+        if (recognition) {
+          try { recognition.stop(); } catch(e) {}
+        }
+        resetVoiceUI();
+        return;
+      }
+
+      try {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'zh-TW';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+          isRecording = true;
+          if (voiceIcon) voiceIcon.innerText = '🔴';
+          if (statusText) statusText.innerText = '正在聆聽...';
+          showToast('請開始說話', '說出請假事由', 'info');
+        };
+
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          const currentVal = document.getElementById('input-leaveReason').value;
+          document.getElementById('input-leaveReason').value = (currentVal ? currentVal + '，' : '') + transcript;
+          document.getElementById('err-step6').classList.add('hidden');
+          showToast('語音已輸入', transcript, 'success');
+        };
+
+        recognition.onerror = (e) => {
+          console.warn("Speech error:", e);
+          resetVoiceUI();
+          showToast('辨識中斷', '請再試一次或直接手動輸入', 'error');
+        };
+
+        recognition.onend = resetVoiceUI;
+
+        recognition.start();
+      } catch (err) {
+        console.warn("Speech start error:", err);
+        resetVoiceUI();
+        showToast('無法啟動麥克風', '請確認麥克風權限', 'error');
+      }
+    }
+
+    function handleKeyNavigation(event, stepNumber) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleNextStep();
+      }
+    }
+
+    function goToStep(step) {
+      if (step < 1 || step > totalSteps) return;
+      triggerHaptic();
+      playTone(480 + step * 30, 0.04);
+
+      for (let i = 1; i <= totalSteps; i++) {
+        const p = document.getElementById(`step-${i}`);
+        if (p) {
+          p.classList.add('hidden');
+          p.classList.remove('fade-enter');
+        }
+      }
+
+      currentStep = step;
+      const targetPanel = document.getElementById(`step-${currentStep}`);
+      if (targetPanel) {
+        targetPanel.classList.remove('hidden');
+        targetPanel.classList.add('fade-enter');
+      }
+
+      const percent = Math.round((currentStep / totalSteps) * 100);
+      document.getElementById('stepIndicatorText').innerText = `STEP 0${currentStep} / 0${totalSteps}`;
+      document.getElementById('stepPercentText').innerText = `${percent}%`;
+      document.getElementById('progressBar').style.width = `${percent}%`;
+
+      const prevBtn = document.getElementById('prevBtn');
+      const prevSpacer = document.getElementById('prevSpacer');
+      if (currentStep > 1) {
+        prevBtn.classList.remove('hidden');
+        prevSpacer.classList.add('hidden');
+      } else {
+        prevBtn.classList.add('hidden');
+        prevSpacer.classList.remove('hidden');
+      }
+
+      const nextBtnText = document.getElementById('nextBtnText');
+      if (currentStep === totalSteps) {
+        nextBtnText.innerText = "確認並送出請假";
+        updateSummaryPreview();
+      } else {
+        nextBtnText.innerText = "下一步";
+      }
+
+      focusCurrentInput();
+    }
+
+    function focusCurrentInput() {
+      setTimeout(() => {
+        if (currentStep === 1) document.getElementById('input-studentId')?.focus();
+        else if (currentStep === 2) document.getElementById('input-studentName')?.focus();
+        else if (currentStep === 3) document.getElementById('input-phoneNumber')?.focus();
+        else if (currentStep === 6) document.getElementById('input-leaveReason')?.focus();
+      }, 50);
+    }
+
+    function handleNextStep() {
+      if (currentStep === 1) {
+        const val = document.getElementById('input-studentId').value.trim();
+        const err = document.getElementById('err-step1');
+        if (!val) { err.classList.remove('hidden'); return; }
+        err.classList.add('hidden');
+        goToStep(2);
+        return;
+      }
+      if (currentStep === 2) {
+        const val = document.getElementById('input-studentName').value.trim();
+        const err = document.getElementById('err-step2');
+        if (!val) { err.classList.remove('hidden'); return; }
+        err.classList.add('hidden');
+        goToStep(3);
+        return;
+      }
+      if (currentStep === 3) {
+        const val = document.getElementById('input-phoneNumber').value.trim();
+        const err = document.getElementById('err-step3');
+        if (!val || val.length < 7) { err.classList.remove('hidden'); return; }
+        err.classList.add('hidden');
+        goToStep(4);
+        return;
+      }
+      if (currentStep === 4) {
+        const val = document.getElementById('input-className').value;
+        const err = document.getElementById('err-step4');
+        if (!val) { err.classList.remove('hidden'); return; }
+        err.classList.add('hidden');
+        goToStep(5);
+        return;
+      }
+      if (currentStep === 5) {
+        goToStep(6);
+        return;
+      }
+      if (currentStep === 6) {
+        const reason = document.getElementById('input-leaveReason').value.trim();
+        const err = document.getElementById('err-step6');
+        if (!reason) { err.classList.remove('hidden'); return; }
+        err.classList.add('hidden');
+        goToStep(7);
+        return;
+      }
+      if (currentStep === 7) {
+        submitLeaveRecord();
+      }
+    }
+
+    function selectClassOption(className) {
+      triggerHaptic();
+      playTone(550, 0.05);
+      document.getElementById('input-className').value = className;
+      document.getElementById('err-step4').classList.add('hidden');
+
+      renderFormOptions();
+      setTimeout(() => goToStep(5), 140);
+    }
+
+    function selectLeaveType(type) {
+      triggerHaptic();
+      playTone(480, 0.04);
+      document.getElementById('input-leaveType').value = type;
+      renderFormOptions();
+    }
+
+    function updateSummaryPreview() {
+      document.getElementById('preview-id').innerText = document.getElementById('input-studentId').value.trim() || '未填寫';
+      document.getElementById('preview-name').innerText = document.getElementById('input-studentName').value.trim() || '未填寫';
+      document.getElementById('preview-phone').innerText = document.getElementById('input-phoneNumber').value.trim() || '未填寫';
+      document.getElementById('preview-class').innerText = document.getElementById('input-className').value || '未選擇';
+      
+      const dateVal = document.getElementById('input-leaveDate').value || '-';
+      const typeVal = document.getElementById('input-leaveType').value || '事假';
+      document.getElementById('preview-date-type').innerText = `${dateVal} (${typeVal})`;
+      document.getElementById('preview-reason').innerText = document.getElementById('input-leaveReason').value.trim() || '無備註';
+    }
+
+    let lastSubmittedRecord = null;
+
+    // 健壯的送出機制（修復重複送出 Bug）
+    async function submitLeaveRecord() {
+      if (isSubmitting) return;
+      isSubmitting = true;
+
+      const nextBtn = document.getElementById('nextBtn');
+      const nextBtnText = document.getElementById('nextBtnText');
+      if (nextBtn) nextBtn.disabled = true;
+      if (nextBtnText) nextBtnText.innerText = "登記處理中...";
+
+      const studentId = document.getElementById('input-studentId').value.trim();
+      const studentName = document.getElementById('input-studentName').value.trim();
+      const phoneNumber = document.getElementById('input-phoneNumber').value.trim();
+      const className = document.getElementById('input-className').value;
+      const leaveDate = document.getElementById('input-leaveDate').value;
+      const leaveType = document.getElementById('input-leaveType').value;
+      const leaveReason = document.getElementById('input-leaveReason').value.trim();
+
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const fullTimeStr = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${timeStr}`;
+      const timestamp = Date.now();
+
+      const newRecordData = {
+        studentId,
+        name: studentName,
+        phone: phoneNumber,
+        className,
+        leaveDate,
+        leaveType,
+        reason: leaveReason,
+        createdAt: fullTimeStr,
+        timestamp: timestamp
+      };
+
+      try {
+        // 1. 同步寫入雲端資料庫（若有啟用）或本機快取備份
+        if (db && currentUser) {
+          try {
+            const recordsCol = collection(db, 'artifacts', appId, 'public', 'data', 'leaveRecords');
+            const docRef = await addDoc(recordsCol, newRecordData);
+            lastSubmittedRecord = { id: docRef.id, ...newRecordData };
+          } catch (err) {
+            lastSubmittedRecord = { id: "REC-" + Math.floor(1000 + Math.random() * 9000), ...newRecordData };
+            leaveRecords.unshift(lastSubmittedRecord);
+            localStorage.setItem('app_leave_records', JSON.stringify(leaveRecords));
+            renderAll();
+          }
+        } else {
+          lastSubmittedRecord = { id: "REC-" + Math.floor(1000 + Math.random() * 9000), ...newRecordData };
+          leaveRecords.unshift(lastSubmittedRecord);
+          localStorage.setItem('app_leave_records', JSON.stringify(leaveRecords));
+          renderAll();
+        }
+
+        // 2. 送至 Google 試算表（非同步，不阻塞畫面）
+        let syncedToSheets = false;
+        if (googleSheetsUrl && googleSheetsUrl.startsWith('https://script.google.com/')) {
+          try {
+            fetch(googleSheetsUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify(newRecordData)
+            }).catch(e => console.warn("Sheets sync background warning:", e));
+            syncedToSheets = true;
+          } catch (e) {
+            console.warn("Sheets fetch error:", e);
+          }
+        }
+
+        triggerHaptic();
+        playTone(600, 0.08);
+
+        document.getElementById('stepCardContainer').classList.add('hidden');
+        const receiptModal = document.getElementById('receiptModal');
+        receiptModal.classList.remove('hidden');
+
+        document.getElementById('ticket-name-id').innerText = `${studentName} (${studentId})`;
+        document.getElementById('ticket-class').innerText = className;
+        document.getElementById('ticket-date').innerText = leaveDate;
+        document.getElementById('ticket-type').innerText = leaveType;
+        document.getElementById('ticket-reason').innerText = leaveReason;
+        document.getElementById('ticket-code').innerText = `PASS-${Math.floor(100000 + Math.random() * 900000)}`;
+
+        const sheetsStatusTag = document.getElementById('ticket-sheets-status');
+        if (syncedToSheets) {
+          sheetsStatusTag.classList.remove('hidden');
+        } else {
+          sheetsStatusTag.classList.add('hidden');
+        }
+
+        showToast('登記完成', syncedToSheets ? '已同步儲存並寫入 Google 試算表' : '請假資料已成功同步保存', 'success');
+      } catch (submitErr) {
+        console.error("Submit error:", submitErr);
+        showToast('登記異常', '請確認網路連線後再試一次', 'error');
+      } finally {
+        isSubmitting = false;
+        if (nextBtn) nextBtn.disabled = false;
+        if (nextBtnText) nextBtnText.innerText = "確認並送出請假";
+      }
+    }
+
+    function shareToLine() {
+      if (!lastSubmittedRecord) return;
+      const r = lastSubmittedRecord;
+      const text = `【學生請假通知】\n學生姓名：${r.name}\n學號：${r.studentId}\n所屬班級：${r.className}\n請假日期：${r.leaveDate} (${r.leaveType})\n聯絡電話：${r.phone}\n請假事由：${r.reason}\n(由線上請假系統發送)`;
+      
+      const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(text)}`;
+      window.open(lineUrl, '_blank');
+    }
+
+    function copyTicketSummary() {
+      if (!lastSubmittedRecord) return;
+      const r = lastSubmittedRecord;
+      const text = `【請假條】${r.className} ${r.name}(${r.studentId}) 於 ${r.leaveDate} 請假 (${r.leaveType})。事由：${r.reason}。電話：${r.phone}`;
+      
+      const temp = document.createElement("textarea");
+      temp.value = text;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand('copy');
+      document.body.removeChild(temp);
+
+      showToast('已複製', '假單文字已複製至剪貼簿', 'success');
+    }
+
+    function resetAndFillAnother() {
+      document.getElementById('input-studentId').value = '';
+      document.getElementById('input-studentName').value = '';
+      document.getElementById('input-phoneNumber').value = '';
+      document.getElementById('input-className').value = '';
+      document.getElementById('input-leaveReason').value = '';
+      
+      // 隱藏錯誤提示
+      for (let i = 1; i <= 6; i++) {
+        const err = document.getElementById(`err-step${i}`);
+        if (err) err.classList.add('hidden');
+      }
+
+      document.getElementById('ticket-sheets-status').classList.add('hidden');
+      document.getElementById('receiptModal').classList.add('hidden');
+      document.getElementById('stepCardContainer').classList.remove('hidden');
+      renderFormOptions();
+      goToStep(1);
+    }
+
+    function switchView(view) {
+      triggerHaptic();
+      playTone(500, 0.03);
+      const studentView = document.getElementById('studentView');
+      const adminView = document.getElementById('adminView');
+      const tabStudent = document.getElementById('tabBtnStudent');
+      const tabAdmin = document.getElementById('tabBtnAdmin');
+
+      if (view === 'admin') {
+        if (studentView) studentView.classList.add('hidden');
+        if (adminView) {
+          adminView.classList.remove('hidden');
+          adminView.classList.add('fade-enter');
+        }
+        if (tabStudent) {
+          tabStudent.className = "px-3.5 py-1 rounded-full text-xs font-medium transition-all text-neutral-500 hover:text-neutral-900";
+        }
+        if (tabAdmin) {
+          tabAdmin.className = "px-3.5 py-1 rounded-full text-xs font-semibold transition-all bg-white text-neutral-900 shadow-sm flex items-center gap-1.5";
+        }
+        renderAll();
+      } else {
+        if (adminView) adminView.classList.add('hidden');
+        if (studentView) {
+          studentView.classList.remove('hidden');
+          studentView.classList.add('fade-enter');
+        }
+        if (tabStudent) {
+          tabStudent.className = "px-3.5 py-1 rounded-full text-xs font-semibold transition-all bg-white text-neutral-900 shadow-sm";
+        }
+        if (tabAdmin) {
+          tabAdmin.className = "px-3.5 py-1 rounded-full text-xs font-medium transition-all text-neutral-500 hover:text-neutral-900 flex items-center gap-1.5";
+        }
+      }
+    }
+
+    function attemptEnterAdmin() {
+      if (isAdminAuthenticated) {
+        switchView('admin');
+      } else {
+        openAdminAuthModal();
+      }
+    }
+
+    function openAdminAuthModal() {
+      const modal = document.getElementById('adminAuthModal');
+      const input = document.getElementById('adminPasswordInput');
+      document.getElementById('adminAuthError').classList.add('hidden');
+      input.value = '';
+      modal.classList.remove('hidden');
+      setTimeout(() => input.focus(), 80);
+    }
+
+    function closeAdminAuthModal() {
+      document.getElementById('adminAuthModal').classList.add('hidden');
+    }
+
+    function verifyAdminPassword() {
+      const input = document.getElementById('adminPasswordInput').value;
+      if (input === adminPassword) {
+        isAdminAuthenticated = true;
+        closeAdminAuthModal();
+        switchView('admin');
+        showToast('驗證成功', '已進入管理後台', 'success');
+      } else {
+        document.getElementById('adminAuthError').classList.remove('hidden');
+        triggerHaptic();
+        playTone(220, 0.15, 'sawtooth');
+      }
+    }
+
+    function adminLogout() {
+      isAdminAuthenticated = false;
+      switchView('student');
+      showToast('已登出', '後台已重新上鎖', 'info');
+    }
+
+    function openSheetsModal() {
+      const modal = document.getElementById('sheetsModal');
+      const input = document.getElementById('input-sheetsUrl');
+      if (input) input.value = googleSheetsUrl;
+      modal.classList.remove('hidden');
+    }
+
+    function closeSheetsModal() {
+      document.getElementById('sheetsModal').classList.add('hidden');
+    }
+
+    async function saveSheetsUrl() {
+      const inputVal = document.getElementById('input-sheetsUrl').value.trim();
+      googleSheetsUrl = inputVal;
+      localStorage.setItem('app_sheets_url', inputVal);
+      
+      if (db && currentUser) {
+        try {
+          const configDoc = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config');
+          await setDoc(configDoc, { googleSheetsUrl: inputVal }, { merge: true });
+        } catch (e) {
+          console.error("Save config error:", e);
+        }
+      }
+
+      updateSheetsUI();
+      showToast('設定已儲存', inputVal ? '所有裝置請假將即時寫入 Google Sheets' : '已清除 Google 試算表連結', 'success');
+      closeSheetsModal();
+
+      if (googleSheetsUrl) {
+        fetchFromGoogleSheets(true);
+      }
+    }
+
+    function copyGasScriptCode() {
+      const codeBlock = document.getElementById('gasCodeBlock');
+      const text = codeBlock ? codeBlock.innerText : '';
+      const temp = document.createElement("textarea");
+      temp.value = text;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand('copy');
+      document.body.removeChild(temp);
+      showToast('已複製', 'Google Apps Script 代碼已複製至剪貼簿', 'success');
+    }
+
+    async function fetchFromGoogleSheets(notify = false) {
+      if (!googleSheetsUrl) {
+        if (notify) showToast('尚未設定網址', '請先點擊「Google 試算表」設定 Apps Script 網址', 'error');
+        return;
+      }
+      try {
+        if (notify) showToast('同步中', '正在向 Google 試算表拉取最新名單...', 'info');
+        const res = await fetch(googleSheetsUrl);
+        const data = await res.json();
+        if (data && data.status === 'ok' && Array.isArray(data.records)) {
+          leaveRecords = data.records.reverse();
+          localStorage.setItem('app_leave_records', JSON.stringify(leaveRecords));
+          renderAll();
+          if (notify) showToast('同步成功', `已從試算表載入 ${leaveRecords.length} 筆請假資料`, 'success');
+        } else {
+          if (notify) showToast('資料格式異常', '試算表未回傳標準格式，請檢查 Apps Script', 'error');
+        }
+      } catch (err) {
+        console.warn("Fetch from Google Sheets warning:", err);
+        if (notify) showToast('同步失敗', '無法連線至 Google 試算表，請檢查網址或權限設定', 'error');
+      }
+    }
+
+    function handleSortChange(sortType) {
+      currentSort = sortType;
+      renderAll();
+      showToast('排序已更新', document.getElementById('sortSelect').selectedOptions[0].text, 'info');
+    }
+
+    // 健壯的排序函數（修復 NaN 造成的不穩定排序 Bug）
+    function getSortedRecords(records) {
+      const arr = [...records];
+      arr.sort((a, b) => {
+        if (currentSort === 'created-desc') {
+          return parseTimestamp(b) - parseTimestamp(a);
+        }
+        if (currentSort === 'created-asc') {
+          return parseTimestamp(a) - parseTimestamp(b);
+        }
+        if (currentSort === 'leave-desc') {
+          return normalizeDateStr(b.leaveDate).localeCompare(normalizeDateStr(a.leaveDate));
+        }
+        if (currentSort === 'leave-asc') {
+          return normalizeDateStr(a.leaveDate).localeCompare(normalizeDateStr(b.leaveDate));
+        }
+        return 0;
+      });
+      return arr;
+    }
+
+    function renderAll() {
+      updateStatistics();
+      renderCardsList();
+      renderRollCallCards();
+    }
+
+    function updateStatistics() {
+      const statsGrid = document.getElementById('dynamicStatsGrid');
+      const pillsContainer = document.getElementById('filterPillsContainer');
+
+      // 1. 動態繪製統計卡片
+      if (statsGrid) {
+        statsGrid.innerHTML = classOptions.map((cName, idx) => {
+          const count = leaveRecords.filter(r => r.className === cName).length;
+          return `
+            <div class="bg-white border border-neutral-200 p-3.5 rounded-2xl shadow-clean">
+              <span class="text-[10px] font-mono font-medium text-neutral-400">CLASS 0${idx + 1}</span>
+              <div class="flex items-baseline justify-between mt-0.5">
+                <span class="text-xs font-semibold text-neutral-700 truncate">${escapeHtml(cName)}</span>
+                <p class="text-xl font-extrabold text-neutral-900 font-mono">${count}</p>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 2. 動態繪製篩選按鈕列
+      if (pillsContainer) {
+        let pillsHtml = `
+          <button onclick="filterByClass('ALL')" id="filterBtn-ALL" class="filter-pill px-3 py-1.5 rounded-full ${currentFilterClass === 'ALL' ? 'bg-neutral-900 text-white font-semibold' : 'bg-white border border-neutral-200 text-neutral-600 font-medium'} whitespace-nowrap">
+            全部 (${leaveRecords.length})
+          </button>
+        `;
+
+        classOptions.forEach(cName => {
+          const count = leaveRecords.filter(r => r.className === cName).length;
+          const isActive = currentFilterClass === cName;
+          pillsHtml += `
+            <button onclick="filterByClass('${escapeHtml(cName)}')" id="filterBtn-${escapeHtml(cName)}" class="filter-pill px-3 py-1.5 rounded-full ${isActive ? 'bg-neutral-900 text-white font-semibold' : 'bg-white border border-neutral-200 text-neutral-600 font-medium'} whitespace-nowrap">
+              ${escapeHtml(cName)} (${count})
+            </button>
+          `;
+        });
+        pillsContainer.innerHTML = pillsHtml;
+      }
+
+      const badge = document.getElementById('badgeCount');
+      if (badge) badge.innerText = leaveRecords.length;
+    }
+
+    function renderCardsList() {
+      const container = document.getElementById('recordsCardsContainer');
+      const emptyState = document.getElementById('emptyState');
+
+      let filtered = leaveRecords.filter(item => {
+        const matchesClass = (currentFilterClass === 'ALL' || item.className === currentFilterClass);
+        const matchesSearch = searchQuery === '' || 
+          (item.studentId && item.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (item.reason && item.reason.toLowerCase().includes(searchQuery.toLowerCase()));
+        return matchesClass && matchesSearch;
+      });
+
+      let list = getSortedRecords(filtered);
+
+      if (list.length === 0) {
+        container.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+      emptyState.classList.add('hidden');
+
+      container.innerHTML = list.map(item => `
+        <div class="bg-white border border-neutral-200 p-4 rounded-2xl space-y-2.5 shadow-clean">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-neutral-100 text-neutral-800 border border-neutral-200/60">
+                ${escapeHtml(item.className)}
+              </span>
+              <span class="font-bold text-neutral-900 text-sm">${escapeHtml(item.name)}</span>
+              <span class="font-mono text-xs text-neutral-400">${escapeHtml(item.studentId)}</span>
+            </div>
+            <span class="text-[10px] font-mono text-neutral-400">${item.createdAt || ''}</span>
+          </div>
+
+          <div class="text-xs text-neutral-600 bg-neutral-50 p-2.5 rounded-xl border border-neutral-100 space-y-1">
+            <div class="flex items-center justify-between text-[11px] text-neutral-500">
+              <span>${item.leaveDate} · <strong class="text-neutral-900 font-semibold">${escapeHtml(item.leaveType)}</strong></span>
+              <a href="tel:${escapeHtml(item.phone)}" class="text-neutral-900 font-medium hover:underline flex items-center gap-1 font-mono">
+                ${escapeHtml(item.phone)}
+              </a>
+            </div>
+            <p class="text-neutral-800 leading-relaxed">${escapeHtml(item.reason)}</p>
+          </div>
+
+          <div class="flex items-center justify-end pt-0.5 text-xs">
+            <button onclick="deleteRecord('${item.id}')" class="text-neutral-400 hover:text-rose-500 text-[11px] transition">
+              移除紀錄
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function toggleRollCallMode() {
+      isRollCallMode = !isRollCallMode;
+      const rcContainer = document.getElementById('rollCallContainer');
+      const regContainer = document.getElementById('regularListContainer');
+      const btn = document.getElementById('rollCallToggleBtn');
+
+      if (isRollCallMode) {
+        rcContainer.classList.remove('hidden');
+        regContainer.classList.add('hidden');
+        btn.innerText = "清單模式";
+        btn.classList.add('bg-neutral-900', 'text-white', 'border-neutral-900');
+        btn.classList.remove('bg-white', 'text-neutral-700');
+      } else {
+        rcContainer.classList.add('hidden');
+        regContainer.classList.remove('hidden');
+        btn.innerText = "點名模式";
+        btn.classList.remove('bg-neutral-900', 'text-white', 'border-neutral-900');
+        btn.classList.add('bg-white', 'text-neutral-700');
+      }
+      renderRollCallCards();
+    }
+
+    // 健壯的點名模式渲染（使用 normalizeDateStr 精準比對日期，修復缺席查不到 Bug）
+    function renderRollCallCards() {
+      const container = document.getElementById('rollCallCards');
+      if (!container) return;
+
+      const datePicker = document.getElementById('rollCallDatePicker');
+      const targetDate = datePicker ? datePicker.value : getLocalDateString();
+      const targetNorm = normalizeDateStr(targetDate);
+      
+      const dayList = leaveRecords.filter(r => {
+        if (!r.leaveDate) return false;
+        const recordNorm = normalizeDateStr(r.leaveDate);
+        const matchesClass = (currentFilterClass === 'ALL' || r.className === currentFilterClass);
+        return recordNorm === targetNorm && matchesClass;
+      });
+
+      if (dayList.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 text-center text-xs text-neutral-400 bg-white border border-neutral-200 rounded-2xl space-y-1">
+            <p class="font-bold text-neutral-600 text-sm">此日期尚無請假記錄</p>
+            <p class="text-[11px]">查核日期：${targetNorm} ${currentFilterClass !== 'ALL' ? `(${currentFilterClass})` : ''}</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = dayList.map(r => `
+        <div class="p-3.5 bg-white border border-neutral-200 rounded-2xl flex items-center justify-between shadow-clean">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-neutral-100 text-neutral-800">${escapeHtml(r.className)}</span>
+              <span class="text-sm font-bold text-neutral-900">${escapeHtml(r.name)}</span>
+              <span class="text-xs font-mono text-neutral-400">${escapeHtml(r.studentId)}</span>
+            </div>
+            <p class="text-xs text-neutral-500 mt-1">
+              <span class="font-semibold text-neutral-800">${escapeHtml(r.leaveType)}</span>：${escapeHtml(r.reason)}
+            </p>
+          </div>
+          <a href="tel:${escapeHtml(r.phone)}" class="w-8 h-8 rounded-xl bg-neutral-900 hover:bg-neutral-800 flex items-center justify-center text-white text-xs shadow-sm active:scale-95 transition" title="撥打電話">
+            📞
+          </a>
+        </div>
+      `).join('');
+    }
+
+    function filterByClass(className) {
+      triggerHaptic();
+      playTone(500, 0.03);
+      currentFilterClass = className;
+      updateStatistics();
+      renderCardsList();
+      renderRollCallCards();
+    }
+
+    function handleSearch(val) {
+      searchQuery = val.trim();
+      renderCardsList();
+    }
+
+    // 健壯的 CSV 匯出（修復引號換行跳脫 Bug）
+    function exportToCSV() {
+      if (leaveRecords.length === 0) {
+        showToast('無資料', '目前尚無請假紀錄可匯出', 'error');
+        return;
+      }
+
+      const csvEscape = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
+      let csvContent = "\uFEFF登記時間,班級,學號,姓名,電話號碼,請假日期,假別,事由備註\n";
+      const sorted = getSortedRecords(leaveRecords);
+      sorted.forEach(item => {
+        const row = [
+          csvEscape(item.createdAt),
+          csvEscape(item.className),
+          `"\t${String(item.studentId || '').replace(/"/g, '""')}"`,
+          csvEscape(item.name),
+          `"\t${String(item.phone || '').replace(/"/g, '""')}"`,
+          csvEscape(item.leaveDate),
+          csvEscape(item.leaveType),
+          csvEscape(item.reason)
+        ];
+        csvContent += row.join(",") + "\n";
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `請假名冊_${getLocalDateString()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToast('匯出成功', '已下載 Excel (CSV) 檔案', 'success');
+    }
+
+    async function deleteRecord(id) {
+      if (!confirm("確定要刪除這筆請假紀錄嗎？")) return;
+      if (db && currentUser && id) {
+        try {
+          const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaveRecords', id);
+          await deleteDoc(docRef);
+        } catch (e) {
+          console.error("Cloud delete error:", e);
+        }
+      }
+      leaveRecords = leaveRecords.filter(r => r.id !== id);
+      localStorage.setItem('app_leave_records', JSON.stringify(leaveRecords));
+      renderAll();
+      showToast('已刪除', '已移除該筆紀錄', 'info');
+    }
+
+    function showToast(title, message, type = 'success') {
+      const toast = document.getElementById('toastNotification');
+      document.getElementById('toastTitle').innerText = title;
+      document.getElementById('toastMessage').innerText = message;
+      const icon = document.getElementById('toastIcon');
+
+      if (type === 'success') {
+        icon.className = "w-7 h-7 rounded-full bg-neutral-900 text-white flex items-center justify-center flex-shrink-0 text-xs font-bold";
+        icon.innerText = "✓";
+      } else if (type === 'error') {
+        icon.className = "w-7 h-7 rounded-full bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center flex-shrink-0 text-xs font-bold";
+        icon.innerText = "✕";
+      } else {
+        icon.className = "w-7 h-7 rounded-full bg-neutral-100 text-neutral-800 flex items-center justify-center flex-shrink-0 text-xs font-bold";
+        icon.innerText = "i";
+      }
+
+      toast.classList.remove('translate-y-[-16px]', 'opacity-0', 'pointer-events-none');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.add('translate-y-[-16px]', 'opacity-0', 'pointer-events-none');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 2500);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // 暴露全域給 HTML 標籤事件使用
+    window.switchView = switchView;
+    window.attemptEnterAdmin = attemptEnterAdmin;
+    window.closeAdminAuthModal = closeAdminAuthModal;
+    window.verifyAdminPassword = verifyAdminPassword;
+    window.adminLogout = adminLogout;
+    window.openSheetsModal = openSheetsModal;
+    window.closeSheetsModal = closeSheetsModal;
+    window.saveSheetsUrl = saveSheetsUrl;
+    window.copyGasScriptCode = copyGasScriptCode;
+    window.fetchFromGoogleSheets = fetchFromGoogleSheets;
+    window.toggleRollCallMode = toggleRollCallMode;
+    window.renderRollCallCards = renderRollCallCards;
+    window.resetRollCallDateToday = resetRollCallDateToday;
+    window.filterByClass = filterByClass;
+    window.handleSearch = handleSearch;
+    window.handleSortChange = handleSortChange;
+    window.exportToCSV = exportToCSV;
+    window.deleteRecord = deleteRecord;
+    window.toggleSoundEffect = toggleSoundEffect;
+    window.handleKeyNavigation = handleKeyNavigation;
+    window.goToStep = goToStep;
+    window.handleNextStep = handleNextStep;
+    window.selectClassOption = selectClassOption;
+    window.selectLeaveType = selectLeaveType;
+    window.setQuickDate = setQuickDate;
+    window.generateExcuse = generateExcuse;
+    window.toggleVoiceSpeech = toggleVoiceSpeech;
+    window.submitLeaveRecord = submitLeaveRecord;
+    window.shareToLine = shareToLine;
+    window.copyTicketSummary = copyTicketSummary;
+    window.resetAndFillAnother = resetAndFillAnother;
+    window.openOptionsModal = openOptionsModal;
+    window.closeOptionsModal = closeOptionsModal;
+    window.addClassOption = addClassOption;
+    window.removeClassOption = removeClassOption;
+    window.addTypeOption = addTypeOption;
+    window.removeTypeOption = removeTypeOption;
+    window.resetOptionsToDefault = resetOptionsToDefault;
+    window.updateAdminPassword = updateAdminPassword;
+  </script>
+</body>
+</html>
